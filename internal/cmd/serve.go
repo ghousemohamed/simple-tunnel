@@ -35,7 +35,7 @@ func (c *serveCommand) run(cmd *cobra.Command, args []string) error {
 
 func GenerateRandomSubdomain(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	rand.Seed(time.Now().UnixNano())
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 	subdomain := make([]byte, length)
 	for i := range subdomain {
 		subdomain[i] = charset[rand.Intn(len(charset))]
