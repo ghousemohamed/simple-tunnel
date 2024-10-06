@@ -17,15 +17,14 @@ func NewServer(httpPort string) *Server {
 }
 
 func (s *Server) StartServer() error {
-	server := http.Server{
-		Addr: fmt.Sprintf(":%s", s.httpPort),
-		Handler: http.HandlerFunc(func (w http.ResponseWriter, r *http.Request) {
-		}),
-	}
+	// Routes
+	http.HandleFunc("/register_tunnel", s.handleRegisterTunnel)
+	http.HandleFunc("/close_tunnel", s.handleCloseTunnel)
 
 	log.Println("starting server on port", s.httpPort)
 
-	err := server.ListenAndServe()
+	addr := fmt.Sprintf(":%s", s.httpPort)
+	err := http.ListenAndServe(addr, nil)
 
 	if err != nil {
 		return err
