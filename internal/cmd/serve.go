@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"math/rand"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -31,14 +29,4 @@ func ServeCommand() *serveCommand {
 func (c *serveCommand) run(cmd *cobra.Command, args []string) error {
 	fmt.Println(c.httpPort, c.subdomain)
 	return nil
-}
-
-func GenerateRandomSubdomain(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	rand.New(rand.NewSource(time.Now().UnixNano()))
-	subdomain := make([]byte, length)
-	for i := range subdomain {
-		subdomain[i] = charset[rand.Intn(len(charset))]
-	}
-	return string(subdomain)
 }
