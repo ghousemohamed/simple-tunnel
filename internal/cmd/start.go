@@ -1,10 +1,9 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
-	"net/http"
 
+	"github.com/ghousemohamed/simple-tunnel/internal/server"
 	"github.com/spf13/cobra"
 )
 
@@ -27,15 +26,9 @@ func StartCommand() *startCommand {
 }
 
 func (c *startCommand) run(cmd *cobra.Command, args []string) error {
-	server := http.Server{
-		Addr: fmt.Sprintf(":%s", string(c.httpPort)),
-		Handler: http.HandlerFunc(func (w http.ResponseWriter, r *http.Request) {
-		}),
-	}
+	tunnel_server := server.NewServer(c.httpPort)
+	err := tunnel_server.StartServer()
 
-	log.Println("starting server on port", string(c.httpPort))
-
-	err := server.ListenAndServe()
 	if err != nil {
 		log.Fatal("Error starting server", err)
 		return err

@@ -42,5 +42,3 @@ func GenerateRandomSubdomain(length int) string {
 	}
 	return string(subdomain)
 }
-
-
