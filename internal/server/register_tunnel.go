@@ -11,7 +11,7 @@ func (s *Server) handleRegisterTunnel(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]string{
 		"status":  "success",
-		"message": "Tunnel registered",
+		"message": "Tunnel registered",	
 	}
 	s.sendJSONResponse(w, response)
 }
