@@ -18,8 +18,8 @@ func NewServer(httpPort string) *Server {
 
 func (s *Server) StartServer() error {
 	// Routes
-	http.HandleFunc("/register_tunnel", s.handleRegisterTunnel)
-	http.HandleFunc("/close_tunnel", s.handleCloseTunnel)
+	http.HandleFunc("/api/v1/register_tunnel", s.handleRegisterTunnel)
+	http.HandleFunc("/api/v1/close_tunnel", s.handleCloseTunnel)
 
 	log.Println("starting server on port", s.httpPort)
 
