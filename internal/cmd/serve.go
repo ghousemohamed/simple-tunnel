@@ -1,15 +1,15 @@
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/ghousemohamed/simple-tunnel/internal/client"
 	"github.com/spf13/cobra"
 )
 
 type serveCommand struct {
 	cmd      *cobra.Command
-	httpPort int
+	httpPort string
 	subdomain string
+	serverAddr string
 }
 
 func ServeCommand() *serveCommand {
@@ -20,13 +20,14 @@ func ServeCommand() *serveCommand {
 		RunE:  serveCommand.run,
 	}
 
-	serveCommand.cmd.Flags().IntVar(&serveCommand.httpPort, "port", 8080, "Port to start server tunnel on")
+	serveCommand.cmd.Flags().StringVar(&serveCommand.httpPort, "port", "8080", "Port to start server tunnel on")
 	serveCommand.cmd.Flags().StringVar(&serveCommand.subdomain, "subdomain", GenerateRandomSubdomain(10), "Custom subdomain to serve on")
+	serveCommand.cmd.Flags().StringVar(&serveCommand.serverAddr, "server", "simpletunnel.me:80", "Server through which tunnels are routed")
 
 	return serveCommand
 }
 
 func (c *serveCommand) run(cmd *cobra.Command, args []string) error {
-	fmt.Println(c.httpPort, c.subdomain)
+	client.NewClient(c.httpPort, c.serverAddr, c.subdomain).StartClient()
 	return nil
 }

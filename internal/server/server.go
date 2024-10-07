@@ -17,9 +17,10 @@ func NewServer(httpPort string) *Server {
 }
 
 func (s *Server) StartServer() error {
+	ts := NewTunnelServer()
 	// Routes
-	http.HandleFunc("/api/v1/register_tunnel", s.handleRegisterTunnel)
-	http.HandleFunc("/api/v1/close_tunnel", s.handleCloseTunnel)
+	http.HandleFunc("/", ts.handleTunnelRequest)
+	http.HandleFunc("/_tunnel", ts.handleTunnelOpen)
 
 	log.Println("starting server on port", s.httpPort)
 
