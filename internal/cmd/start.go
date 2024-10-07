@@ -16,7 +16,7 @@ func StartCommand() *startCommand {
 	startCommand := &startCommand{}
 	startCommand.cmd = &cobra.Command{
 		Use:   "start",
-		Short: "Run the server",
+		Short: "Run the client server",
 		RunE:  startCommand.run,
 	}
 

@@ -16,7 +16,7 @@ func ServeCommand() *serveCommand {
 	serveCommand := &serveCommand{}
 	serveCommand.cmd = &cobra.Command{
 		Use:   "serve",
-		Short: "Run the server",
+		Short: "Run the tunnel server",
 		RunE:  serveCommand.run,
 	}
 
