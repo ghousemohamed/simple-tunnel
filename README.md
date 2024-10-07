@@ -5,7 +5,7 @@ Simple Tunnel is a free, lightweight HTTP tunneling solution written in Go. It a
 ## Installation
 
 ```
-wget -qO- https://github.com/ghousemohamed/simple-tunnel/blob/main/install.sh | bash
+wget https://raw.githubusercontent.com/ghousemohamed/simple-tunnel/main/install.sh -O install.sh && bash install.sh
 ```
 
 Now you can run `simple-tunnel` from anywhere on your machine!
