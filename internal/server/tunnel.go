@@ -67,10 +67,12 @@ func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Reque
 	defer atomic.StoreInt32(&tunnel.inUse, 0)
 
 	if err := r.Write(tunnel.writer); err != nil {
+		log.Printf("Error forwarding request: %v", err)
 		http.Error(w, "Error forwarding request", http.StatusInternalServerError)
 		return
 	}
 	if err := tunnel.writer.Flush(); err != nil {
+		log.Printf("Error flushing request: %v", err)
 		http.Error(w, "Error flushing request", http.StatusInternalServerError)
 		return
 	}
@@ -119,24 +121,34 @@ func (ts *TunnelServer) handleTunnelOpen(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	conn, _, err := w.(http.Hijacker).Hijack()
+	conn, bufrw, err := w.(http.Hijacker).Hijack()
 	if err != nil {
+		log.Printf("Hijack error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	ts.tunnelsLock.Lock()
-	ts.tunnels[subdomain] = append(ts.tunnels[subdomain], NewTunnelConnection(conn))
+	ts.tunnels[subdomain] = append(ts.tunnels[subdomain], &TunnelConnection{
+		conn:   conn,
+		reader: bufrw.Reader,
+		writer: bufrw.Writer,
+		inUse:  0,
+	})
 	ts.tunnelsLock.Unlock()
 
 	log.Printf("Tunnel opened for subdomain: %s", subdomain)
-	response := "HTTP/1.1 200 OK\r\n" +
-		"Content-Type: text/plain\r\n" +
-		"Content-Length: 13\r\n" +
-		"\r\n" +
-		"Tunnel opened"
+	response := "HTTP/1.1 101 Switching Protocols\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"\r\n"
 
-	conn.Write([]byte(response))
+	_, err = conn.Write([]byte(response))
+	if err != nil {
+		log.Printf("Error writing response: %v", err)
+		ts.removeTunnel(subdomain, conn)
+		return
+	}
 
 	// Start a goroutine to keep the connection alive
 	go ts.keepAlive(subdomain, conn)

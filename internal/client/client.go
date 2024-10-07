@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 )
 
 type Client struct {
@@ -38,8 +39,13 @@ func (c *Client) StartClient() error {
 		log.Fatalf("Failed to create request: %v", err)
 	}
 
-	err = req.Write(conn)
-	if err != nil {
+	// Add headers for WebSocket upgrade
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+
+	if err := req.Write(conn); err != nil {
 		log.Fatalf("Failed to send request: %v", err)
 	}
 
@@ -47,9 +53,17 @@ func (c *Client) StartClient() error {
 	if err != nil {
 		log.Fatalf("Failed to read response: %v", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Failed to open tunnel: %s", resp.Status)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		log.Fatalf("Unexpected status code: %d", resp.StatusCode)
 	}
+
+	// Check if the connection has been upgraded
+	if strings.ToLower(resp.Header.Get("Upgrade")) != "websocket" {
+		log.Fatalf("Server did not upgrade to WebSocket")
+	}
+
 	log.Printf("Your site is now available at: https://%s.%s", c.subdomain, c.serverAddr)
 
 	go func() {
