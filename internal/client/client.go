@@ -52,6 +52,37 @@ func (c *Client) StartClient() error {
 	}
 	log.Printf("Your site is now available at: https://%s.%s", c.subdomain, c.serverAddr)
 
+	go func() {
+		reader := bufio.NewReader(conn)
+		for {
+			req, err := http.ReadRequest(reader)
+			if err != nil {
+				if err == io.EOF {
+					log.Println("Tunnel closed by server")
+					return
+				}
+				log.Printf("Error reading request: %v", err)
+				continue
+			}
+
+			if req.Method == "PING" {
+				conn.Write([]byte("PONG\n"))
+				continue
+			}
+
+			localResp, err := c.handleLocalRequest(req)
+			if err != nil {
+				log.Printf("Error handling local request: %v", err)
+				continue
+			}
+
+			err = localResp.Write(conn)
+			if err != nil {
+				log.Printf("Error writing response to tunnel: %v", err)
+			}
+		}
+	}()
+
 	for {
 		req, err := http.ReadRequest(bufio.NewReader(conn))
 		if err != nil {
@@ -65,6 +96,22 @@ func (c *Client) StartClient() error {
 
 		handleHTTP(c, conn, req)
 	}
+}
+
+func (c *Client) handleLocalRequest(req *http.Request) (*http.Response, error) {
+	localURL := fmt.Sprintf("http://localhost:%s%s", c.httpPort, req.URL.Path)
+	if req.URL.RawQuery != "" {
+		localURL += "?" + req.URL.RawQuery
+	}
+
+	localReq, err := http.NewRequest(req.Method, localURL, req.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error creating local request: %v", err)
+	}
+
+	localReq.Header = req.Header
+
+	return http.DefaultClient.Do(localReq)
 }
 
 func handleHTTP(c *Client, conn net.Conn, req *http.Request) {
