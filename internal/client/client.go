@@ -10,10 +10,20 @@ import (
 	"strings"
 )
 
+const (
+	green  = "\033[32m"
+	red    = "\033[31m"
+	reset  = "\033[0m"
+)
+
 type Client struct {
 	httpPort string
 	serverAddr string
 	subdomain string
+}
+
+func init() {
+	log.SetFlags(0)
 }
 
 func NewClient(httpPort string, serverAddr string, subdomain string) *Client {
@@ -75,9 +85,12 @@ func (c *Client) StartClient() error {
 					log.Println("Tunnel closed by server")
 					return
 				}
-				log.Printf("Error reading request: %v", err)
+				log.Printf("%sError reading request: %v%s", red, err, reset)
 				continue
 			}
+
+			// Log the request in the desired format with color
+			log.Printf("%s%s %s %s%s", green, req.Method, req.URL.Path, req.Proto, reset)
 
 			if req.Method == "PING" {
 				conn.Write([]byte("PONG\n"))
@@ -86,13 +99,13 @@ func (c *Client) StartClient() error {
 
 			localResp, err := c.handleLocalRequest(req)
 			if err != nil {
-				log.Printf("Error handling local request: %v", err)
+				log.Printf("%sError handling local request: %v%s", red, err, reset)
 				continue
 			}
 
 			err = localResp.Write(conn)
 			if err != nil {
-				log.Printf("Error writing response to tunnel: %v", err)
+				log.Printf("%sError writing response to tunnel: %v%s", red, err, reset)
 			}
 		}
 	}()
@@ -104,9 +117,12 @@ func (c *Client) StartClient() error {
 				log.Println("Tunnel closed by server")
 				return nil
 			}
-			log.Printf("Error reading request: %v", err)
+			log.Printf("%sError reading request: %v%s", red, err, reset)
 			continue
 		}
+
+		// Log the request in the desired format with color
+		log.Printf("%s%s %s %s%s", green, req.Method, req.URL.Path, req.Proto, reset)
 
 		handleHTTP(c, conn, req)
 	}

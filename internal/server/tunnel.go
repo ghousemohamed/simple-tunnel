@@ -128,13 +128,15 @@ func (ts *TunnelServer) handleTunnelOpen(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	ts.tunnelsLock.Lock()
-	ts.tunnels[subdomain] = append(ts.tunnels[subdomain], &TunnelConnection{
+	tunnelConn := &TunnelConnection{
 		conn:   conn,
 		reader: bufrw.Reader,
 		writer: bufrw.Writer,
 		inUse:  0,
-	})
+	}
+
+	ts.tunnelsLock.Lock()
+	ts.tunnels[subdomain] = append(ts.tunnels[subdomain], tunnelConn)
 	ts.tunnelsLock.Unlock()
 
 	log.Printf("Tunnel opened for subdomain: %s", subdomain)
@@ -150,24 +152,40 @@ func (ts *TunnelServer) handleTunnelOpen(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Start a goroutine to keep the connection alive
-	go ts.keepAlive(subdomain, conn)
+	// Start a goroutine to keep the connection alive and monitor for closure
+	go ts.monitorConnection(subdomain, tunnelConn)
 }
 
-func (ts *TunnelServer) keepAlive(subdomain string, conn net.Conn) {
+func (ts *TunnelServer) monitorConnection(subdomain string, tunnelConn *TunnelConnection) {
+	defer ts.removeTunnel(subdomain, tunnelConn.conn)
+
+	// Keep-alive loop
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			_, err := conn.Write([]byte("PING\n"))
+			_, err := tunnelConn.conn.Write([]byte("PING\n"))
 			if err != nil {
 				log.Printf("Error sending keep-alive to tunnel %s: %v", subdomain, err)
-				ts.removeTunnel(subdomain, conn)
+				return
+			}
+		default:
+			// Check if the connection is closed
+			one := []byte{}
+			tunnelConn.conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+			_, err := tunnelConn.conn.Read(one)
+			tunnelConn.conn.SetReadDeadline(time.Time{}) // Reset the read deadline
+			if err == io.EOF {
+				log.Printf("Client closed the connection for subdomain: %s", subdomain)
+				return
+			} else if err != nil && !err.(net.Error).Timeout() {
+				log.Printf("Error reading from connection: %v", err)
 				return
 			}
 		}
+		time.Sleep(1 * time.Second) // Small delay to prevent tight loop
 	}
 }
 
@@ -178,13 +196,16 @@ func (ts *TunnelServer) removeTunnel(subdomain string, conn net.Conn) {
 	tunnels := ts.tunnels[subdomain]
 	for i, t := range tunnels {
 		if t.conn == conn {
+			// Remove the tunnel from the slice
 			ts.tunnels[subdomain] = append(tunnels[:i], tunnels[i+1:]...)
+			log.Printf("Removed tunnel for subdomain: %s", subdomain)
 			break
 		}
 	}
 
 	if len(ts.tunnels[subdomain]) == 0 {
 		delete(ts.tunnels, subdomain)
+		log.Printf("Removed all tunnels for subdomain: %s", subdomain)
 	}
 
 	conn.Close()
