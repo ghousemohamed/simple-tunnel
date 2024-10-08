@@ -20,13 +20,13 @@ type TunnelConnection struct {
 }
 
 type TunnelServer struct {
-	tunnels     map[string][]*TunnelConnection
+	tunnel     map[string]*TunnelConnection
 	tunnelsLock sync.RWMutex
 }
 
 func NewTunnelServer() *TunnelServer {
 	return &TunnelServer{
-		tunnels: make(map[string][]*TunnelConnection),
+		tunnel: make(map[string]*TunnelConnection),
 	}
 }
 
@@ -43,20 +43,17 @@ func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Reque
 	subdomain := strings.Split(r.Host, ".")[0]
 
 	ts.tunnelsLock.RLock()
-	tunnels, ok := ts.tunnels[subdomain]
+	tunnelConn, ok := ts.tunnel[subdomain]
 	ts.tunnelsLock.RUnlock()
 
-	if !ok || len(tunnels) == 0 {
+	if !ok {
 		http.Error(w, "Tunnel not found", http.StatusNotFound)
 		return
 	}
 
 	var tunnel *TunnelConnection
-	for _, t := range tunnels {
-		if atomic.CompareAndSwapInt32(&t.inUse, 0, 1) {
-			tunnel = t
-			break
-		}
+	if atomic.CompareAndSwapInt32(&tunnelConn.inUse, 0, 1) {
+		tunnel = tunnelConn
 	}
 
 	if tunnel == nil {
@@ -78,29 +75,6 @@ func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Reque
 	}
 
 	resp, err := http.ReadResponse(tunnel.reader, r)
-	if err != nil {
-		http.Error(w, "Error reading response from tunnel", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	for k, v := range resp.Header {
-		w.Header()[k] = v
-	}
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
-}
-
-func (ts *TunnelServer) handleHTTP(w http.ResponseWriter, r *http.Request, tunnel net.Conn) {
-	tunnel.SetDeadline(time.Now().Add(30 * time.Second))
-	defer tunnel.SetDeadline(time.Time{})
-
-	if err := r.Write(tunnel); err != nil {
-		http.Error(w, "Error forwarding request", http.StatusInternalServerError)
-		return
-	}
-
-	resp, err := http.ReadResponse(bufio.NewReader(tunnel), r)
 	if err != nil {
 		http.Error(w, "Error reading response from tunnel", http.StatusInternalServerError)
 		return
@@ -136,7 +110,7 @@ func (ts *TunnelServer) handleTunnelOpen(w http.ResponseWriter, r *http.Request)
 	}
 
 	ts.tunnelsLock.Lock()
-	ts.tunnels[subdomain] = append(ts.tunnels[subdomain], tunnelConn)
+	ts.tunnel[subdomain] = tunnelConn
 	ts.tunnelsLock.Unlock()
 
 	log.Printf("Tunnel opened for subdomain: %s", subdomain)
@@ -192,21 +166,7 @@ func (ts *TunnelServer) monitorConnection(subdomain string, tunnelConn *TunnelCo
 func (ts *TunnelServer) removeTunnel(subdomain string, conn net.Conn) {
 	ts.tunnelsLock.Lock()
 	defer ts.tunnelsLock.Unlock()
-
-	tunnels := ts.tunnels[subdomain]
-	for i, t := range tunnels {
-		if t.conn == conn {
-			// Remove the tunnel from the slice
-			ts.tunnels[subdomain] = append(tunnels[:i], tunnels[i+1:]...)
-			log.Printf("Removed tunnel for subdomain: %s", subdomain)
-			break
-		}
-	}
-
-	if len(ts.tunnels[subdomain]) == 0 {
-		delete(ts.tunnels, subdomain)
-		log.Printf("Removed all tunnels for subdomain: %s", subdomain)
-	}
+	delete(ts.tunnel, subdomain)
 
 	conn.Close()
 }
