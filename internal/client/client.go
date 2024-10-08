@@ -85,7 +85,9 @@ func (c *Client) StartClient() error {
 					log.Println("Tunnel closed by server")
 					return
 				}
-				log.Printf("%sError reading request: %v%s", red, err, reset)
+				if !strings.Contains(err.Error(), "PING") { // This condition is bad, I don't know how else to handle this case.
+					log.Printf("%sError reading request: %v%s", red, err, reset)
+				}
 				continue
 			}
 
