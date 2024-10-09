@@ -103,14 +103,13 @@ server {
 }
 ```
 
-## Future work
+## TODO
 
+- [ ] Handle Websockets
+- [ ] Handle Server Sent Events (SSE)
+- [ ] Handle Chunked data response
 - [ ] Basic HTTP Authentication
-- [ ] Rate limiting
 - [ ] Allow only certain routes and methods
-- [ ] Tunnel via CONNECT method
-- [ ] HTTP/2/3
-- [ ] TCP/SSH Tunneling
 
 ## Acknowledgements
 
