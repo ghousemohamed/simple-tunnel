@@ -9,14 +9,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"sync/atomic"
 )
 
 type TunnelConnection struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
-	inUse  int32
 }
 
 type TunnelServer struct {
@@ -35,7 +33,6 @@ func NewTunnelConnection(conn net.Conn) *TunnelConnection {
 		conn:   conn,
 		reader: bufio.NewReader(conn),
 		writer: bufio.NewWriter(conn),
-		inUse:  0,
 	}
 }
 
@@ -43,7 +40,7 @@ func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Reque
 	subdomain := strings.Split(r.Host, ".")[0]
 
 	ts.tunnelsLock.RLock()
-	tunnelConn, ok := ts.tunnel[subdomain]
+	tunnel, ok := ts.tunnel[subdomain]
 	ts.tunnelsLock.RUnlock()
 
 	if !ok {
@@ -51,17 +48,10 @@ func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var tunnel *TunnelConnection
-	if atomic.CompareAndSwapInt32(&tunnelConn.inUse, 0, 1) {
-		tunnel = tunnelConn
-	}
-
 	if tunnel == nil {
 		http.Error(w, "No available tunnels", http.StatusServiceUnavailable)
 		return
 	}
-
-	defer atomic.StoreInt32(&tunnel.inUse, 0)
 
 	if err := r.Write(tunnel.writer); err != nil {
 		log.Printf("Error forwarding request: %v", err)
@@ -106,7 +96,6 @@ func (ts *TunnelServer) handleTunnelOpen(w http.ResponseWriter, r *http.Request)
 		conn:   conn,
 		reader: bufrw.Reader,
 		writer: bufrw.Writer,
-		inUse:  0,
 	}
 
 	ts.tunnelsLock.Lock()
