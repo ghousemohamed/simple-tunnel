@@ -2,19 +2,20 @@ package client
 
 import (
 	"bufio"
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
-	"strings"
-	"github.com/gorilla/websocket"
 	"net/url"
+	"strings"
 	"sync"
-	"crypto/sha1"
-	"encoding/base64"
-	"encoding/binary"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -88,51 +89,80 @@ func (c *Client) StartClient() error {
 	log.Printf("Your site is now available at: https://%s.%s", c.subdomain, c.serverAddr)
 
 	for {
+		log.Println("Waiting for request from server")
 		req, err := http.ReadRequest(bufio.NewReader(conn))
 		if err != nil {
 			if err == io.EOF {
 				log.Println("Tunnel closed by server")
 				return nil
 			}
-			log.Printf("%sError reading request: %v%s", red, err, reset)
-			continue
+			log.Printf("Error reading request: %v", err)
+			return err
 		}
 
-		// Log the request in the desired format with color
-		log.Printf("%s%s %s %s%s", green, req.Method, req.URL.Path, req.Proto, reset)
+		log.Printf("Received request: %s %s", req.Method, req.URL.Path)
 
 		if websocket.IsWebSocketUpgrade(req) {
+			log.Println("Handling WebSocket upgrade request")
 			c.handleWebSocketRequest(conn, req)
 		} else {
-			handleHTTP(c, conn, req)
+			c.handleHTTPRequest(conn, req)
 		}
 	}
 }
 
-func handleHTTP(c *Client, conn net.Conn, req *http.Request) {
+func (c *Client) handleHTTPRequest(conn net.Conn, req *http.Request) {
+	// Create a new URL for the local server
 	localURL := fmt.Sprintf("http://localhost:%s%s", c.httpPort, req.URL.Path)
 	if req.URL.RawQuery != "" {
 		localURL += "?" + req.URL.RawQuery
 	}
 
+	log.Printf("Forwarding request to local server: %s", localURL)
+
+	// Create a new request for the local server
 	localReq, err := http.NewRequest(req.Method, localURL, req.Body)
 	if err != nil {
 		log.Printf("Error creating local request: %v", err)
+		sendErrorResponse(conn, fmt.Sprintf("Error creating local request: %v", err))
 		return
 	}
 
-	localReq.Header = req.Header
+	// Copy headers from the original request
+	localReq.Header = req.Header.Clone()
 
-	localResp, err := http.DefaultClient.Do(localReq)
+	// Send the request to the local server
+	resp, err := http.DefaultClient.Do(localReq)
 	if err != nil {
 		log.Printf("Error sending request to local server: %v", err)
+		sendErrorResponse(conn, fmt.Sprintf("Error sending request to local server: %v", err))
 		return
 	}
-	defer localResp.Body.Close()
+	defer resp.Body.Close()
 
-	err = localResp.Write(conn)
-	if err != nil {
+	log.Printf("Received response from local server: %d", resp.StatusCode)
+
+	// Write the response back to the tunnel
+	if err := resp.Write(conn); err != nil {
 		log.Printf("Error writing response to tunnel: %v", err)
+	}
+
+	log.Printf("Response sent back through tunnel")
+}
+
+func sendErrorResponse(conn net.Conn, message string) {
+	resp := &http.Response{
+		Status:     "500 Internal Server Error",
+		StatusCode: http.StatusInternalServerError,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(message)),
+	}
+	resp.Header.Set("Content-Type", "text/plain")
+	if err := resp.Write(conn); err != nil {
+		log.Printf("Error sending error response: %v", err)
 	}
 }
 

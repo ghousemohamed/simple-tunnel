@@ -8,7 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	// "strings"
+	"strings"
 	"sync"
 	"time"
 	"github.com/gorilla/websocket"
@@ -47,19 +47,14 @@ func NewTunnelServer() *TunnelServer {
 }
 
 func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Request) {
-	// subdomain := strings.Split(r.Host, ".")[0]
+	subdomain := strings.Split(r.Host, ".")[0]
 
-	ts.tunnelsLock.RLock()
-	tunnel, ok := ts.tunnel["hello"]
-	ts.tunnelsLock.RUnlock()
+	ts.tunnelsLock.Lock()
+	tunnel, ok := ts.tunnel[subdomain]
+	ts.tunnelsLock.Unlock()
 
 	if !ok {
 		http.Error(w, "Tunnel not found", http.StatusNotFound)
-		return
-	}
-
-	if tunnel == nil {
-		http.Error(w, "No available tunnels", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -68,45 +63,43 @@ func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	for {
-		log.Printf("Waiting for request from tunnel...")
-		req, err := http.ReadRequest(bufio.NewReader(tunnel.conn))
-		if err != nil {
-			if err == io.EOF {
-				log.Println("Tunnel closed by client")
-				return
-			}
-			log.Printf("Error reading request from tunnel: %v", err)
-			continue
-		}
+	// Handle regular HTTP request
+	log.Printf("Handling HTTP request: %s %s", r.Method, r.URL.Path)
 
-		log.Printf("Received request from tunnel: %s %s", req.Method, req.URL.Path)
-
-		if err := req.Write(tunnel.writer); err != nil {
-			log.Printf("Error forwarding request: %v", err)
-			http.Error(w, "Error forwarding request", http.StatusInternalServerError)
-			return
-		}
-
-		if err := tunnel.writer.Flush(); err != nil {
-			log.Printf("Error flushing request: %v", err)
-			http.Error(w, "Error flushing request", http.StatusInternalServerError)
-			return
-		}
-
-		resp, err := http.ReadResponse(tunnel.reader, r)
-		if err != nil {
-			http.Error(w, "Error reading response from tunnel", http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-
-		for k, v := range resp.Header {
-			w.Header()[k] = v
-		}
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+	// Forward the request to the tunnel
+	if err := r.Write(tunnel.writer); err != nil {
+		log.Printf("Error writing request to tunnel: %v", err)
+		http.Error(w, "Error forwarding request", http.StatusInternalServerError)
+		return
 	}
+	if err := tunnel.writer.Flush(); err != nil {
+		log.Printf("Error flushing request to tunnel: %v", err)
+		http.Error(w, "Error forwarding request", http.StatusInternalServerError)
+		return
+	}
+
+	// Read the response from the tunnel
+	resp, err := http.ReadResponse(tunnel.reader, r)
+	if err != nil {
+		log.Printf("Error reading response from tunnel: %v", err)
+		http.Error(w, "Error reading response from client", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy headers
+	for k, v := range resp.Header {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	// Copy body
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		log.Printf("Error copying response body: %v", err)
+	}
+
+	log.Printf("HTTP request handled: %s %s", r.Method, r.URL.Path)
 }
 
 func (ts *TunnelServer) handleTunnelOpen(w http.ResponseWriter, r *http.Request) {
