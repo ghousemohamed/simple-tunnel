@@ -28,14 +28,6 @@ func NewTunnelServer() *TunnelServer {
 	}
 }
 
-func NewTunnelConnection(conn net.Conn) *TunnelConnection {
-	return &TunnelConnection{
-		conn:   conn,
-		reader: bufio.NewReader(conn),
-		writer: bufio.NewWriter(conn),
-	}
-}
-
 func (ts *TunnelServer) handleTunnelRequest(w http.ResponseWriter, r *http.Request) {
 	subdomain := strings.Split(r.Host, ".")[0]
 
@@ -129,11 +121,7 @@ func (ts *TunnelServer) monitorConnection(subdomain string, tunnelConn *TunnelCo
 	for {
 		select {
 		case <-ticker.C:
-			_, err := tunnelConn.conn.Write([]byte("PING\n"))
-			if err != nil {
-				log.Printf("Error sending keep-alive to tunnel %s: %v", subdomain, err)
-				return
-			}
+			// For now let's not do anything here
 		default:
 			// Check if the connection is closed
 			one := []byte{}

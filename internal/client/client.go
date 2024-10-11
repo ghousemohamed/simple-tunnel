@@ -49,12 +49,6 @@ func (c *Client) StartClient() error {
 		log.Fatalf("Failed to create request: %v", err)
 	}
 
-	// Add headers for WebSocket upgrade
-	req.Header.Set("Connection", "Upgrade")
-	req.Header.Set("Upgrade", "websocket")
-	req.Header.Set("Sec-WebSocket-Version", "13")
-	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
-
 	if err := req.Write(conn); err != nil {
 		log.Fatalf("Failed to send request: %v", err)
 	}
@@ -76,42 +70,6 @@ func (c *Client) StartClient() error {
 
 	log.Printf("Your site is now available at: https://%s.%s", c.subdomain, c.serverAddr)
 
-	go func() {
-		reader := bufio.NewReader(conn)
-		for {
-			req, err := http.ReadRequest(reader)
-			if err != nil {
-				if err == io.EOF {
-					log.Println("Tunnel closed by server")
-					return
-				}
-				if !strings.Contains(err.Error(), "PING") { // This condition is bad, I don't know how else to handle this case.
-					log.Printf("%sError reading request: %v%s", red, err, reset)
-				}
-				continue
-			}
-
-			// Log the request in the desired format with color
-			log.Printf("%s%s %s %s%s", green, req.Method, req.URL.Path, req.Proto, reset)
-
-			if req.Method == "PING" {
-				conn.Write([]byte("PONG\n"))
-				continue
-			}
-
-			localResp, err := c.handleLocalRequest(req)
-			if err != nil {
-				log.Printf("%sError handling local request: %v%s", red, err, reset)
-				continue
-			}
-
-			err = localResp.Write(conn)
-			if err != nil {
-				log.Printf("%sError writing response to tunnel: %v%s", red, err, reset)
-			}
-		}
-	}()
-
 	for {
 		req, err := http.ReadRequest(bufio.NewReader(conn))
 		if err != nil {
@@ -128,22 +86,6 @@ func (c *Client) StartClient() error {
 
 		handleHTTP(c, conn, req)
 	}
-}
-
-func (c *Client) handleLocalRequest(req *http.Request) (*http.Response, error) {
-	localURL := fmt.Sprintf("http://localhost:%s%s", c.httpPort, req.URL.Path)
-	if req.URL.RawQuery != "" {
-		localURL += "?" + req.URL.RawQuery
-	}
-
-	localReq, err := http.NewRequest(req.Method, localURL, req.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error creating local request: %v", err)
-	}
-
-	localReq.Header = req.Header
-
-	return http.DefaultClient.Do(localReq)
 }
 
 func handleHTTP(c *Client, conn net.Conn, req *http.Request) {
